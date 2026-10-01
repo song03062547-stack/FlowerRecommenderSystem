@@ -261,13 +261,28 @@ menu = st.sidebar.radio("เลือกหน้าต่าง:", ["หน้�
 if menu == "หน้าผู้ใช้ทั่วไป (User)":
     st.title("🌸 ระบบแนะนำดอกไม้")
 
-    # ส่วนกรอกชื่อตนเอง
-    user_name_input = st.text_input("👤 กรอกชื่อของคุณเพื่อเริ่มใช้งาน (เช่น Song, Praew...):", placeholder="กรอกชื่อที่นี่...")
+    col_sel, col_inp = st.columns(2)
+    
+    with col_sel:
+        # ให้เลือกรายชื่อที่มีอยู่ในฐานข้อมูล
+        existing_users = get_all_users()
+        selected_user = st.selectbox("📌 เลือกรายชื่อผู้ใช้ที่มีในระบบ:", ["-- เลือกจากรายชื่อ --"] + existing_users)
+    
+    with col_inp:
+        # หรือ พิมพ์ชื่อใหม่เอง
+        input_user = st.text_input("👤 หรือ พิมพ์ชื่อของคุณเอง (เช่น Song):", placeholder="กรอกชื่อตรงนี้...")
 
-    if user_name_input.strip() != "":
-        current_user = user_name_input.strip()
+    # ตัดสินใจว่าจะใช้ชื่อไหน (ถ้าพิมพ์ชื่อใหม่ให้ใช้ชื่อใหม่ ถ้าเลือกจากลิสต์ให้ใช้ชื่อที่เลือก)
+    current_user = ""
+    if input_user.strip() != "":
+        current_user = input_user.strip()
+    elif selected_user != "-- เลือกจากรายชื่อ --":
+        current_user = selected_user
+
+    if current_user != "":
         get_or_create_user(current_user)  # บันทึก User ลง Neo4j
-        
+        st.success(f"กำลังใช้งานในชื่อ: **{current_user}**")
+
         tab1, tab2, tab3, tab4 = st.tabs([
             "⭐ บันทึกดอกไม้ที่คุณชอบ",
             "📖 ประวัติดอกไม้ที่คุณเลือกไว้", 
@@ -305,14 +320,14 @@ if menu == "หน้าผู้ใช้ทั่วไป (User)":
                             st.write(f"**ความหมาย:** {row['meaning']}")
                             st.caption(f"⭐ คะแนนความชอบ: {row['rating']}/5")
             else:
-                st.info("คุณยังไม่ได้บันทึกความชอบดอกไม้ใดๆ โปรดไปที่แท็บ '⭐ บันทึกดอกไม้ที่คุณชอบ' เพื่อบันทึกก่อนครับ")
+                st.info("ยังไม่มีรายการดอกไม้ที่เลือกไว้ โปรดไปที่แท็บ '⭐ บันทึกดอกไม้ที่คุณชอบ' เพื่อเพิ่มดอกไม้ครับ")
 
         # --- TAB 3: ดูผู้ใช้ที่รสนิยมใกล้เคียง ---
         with tab3:
             st.subheader(f"ผู้ใช้คนอื่นที่มีรสนิยมใกล้เคียงกับ {current_user}")
             df_sim = get_similar_users(current_user)
             if not df_sim.empty:
-                st.success(f"พบผู้ใช้ที่ชอบดอกไม้ชนิดเดียวกันกับคุณ:")
+                st.success(f"พบผู้ใช้คนอื่นในระบบที่ชอบดอกไม้ชนิดเดียวกันกับ {current_user}:")
                 cols = st.columns(3)
                 for idx, row in df_sim.iterrows():
                     with cols[idx % 3]:
@@ -324,7 +339,7 @@ if menu == "หน้าผู้ใช้ทั่วไป (User)":
                             st.write(f"*{row['meaning']}*")
                             st.caption(f"คะแนนที่ {row['similar_user']} ให้ไว้: {row['other_rating']}/5")
             else:
-                st.info("ยังไม่พบผู้ใช้ที่มีรสนิยมใกล้เคียง (ลองบันทึกดอกไม้ที่คุณชอบเพิ่มที่แท็บแรกก่อนครับ)")
+                st.info("ยังไม่พบผู้ใช้ที่มีรสนิยมใกล้เคียง (ลองไปที่แท็บแรก แล้วกดเลือกบันทึกดอกไม้ที่ชอบดูครับ)")
 
         # --- TAB 4: คำนวณดอกไม้แนะนำ ---
         with tab4:
@@ -342,7 +357,7 @@ if menu == "หน้าผู้ใช้ทั่วไป (User)":
             else:
                 st.info("ไม่มีดอกไม้แนะนำเพิ่มเติมในขณะนี้")
     else:
-        st.info("👆 กรุณากรอกชื่อของคุณในช่องด้านบนก่อนเริ่มใช้งาน")
+        st.info("👆 โปรดเลือกรายชื่อจากดร็อปดาวน์ หรือพิมพ์ชื่อของคุณในช่องด้านบนก่อนเริ่มใช้งาน")
 
         st.divider()
         st.subheader("🎲 สุ่มดอกไม้แนะนำประจำวัน")
@@ -383,7 +398,7 @@ elif menu == "เข้าสู่ระบบ Admin":
     else:
         col_title, col_logout = st.columns([4, 1])
         with col_title:
-            st.subheader("⚙️️ เมนูจัดการข้อมูลหลังบ้าน")
+            st.subheader("⚙️ เมนูจัดการข้อมูลหลังบ้าน")
         with col_logout:
             if st.button("ออกจากระบบ (Logout)"):
                 st.session_state["admin_logged_in"] = False

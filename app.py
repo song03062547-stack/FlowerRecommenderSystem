@@ -47,6 +47,42 @@ def ping():
 
 # ----------------- USER FUNCTIONS -----------------
 
+def get_all_users():
+    """ดึงรายชื่อ User ทั้งหมดที่มีในระบบ"""
+    cypher = "MATCH (u:User) RETURN u.name AS name ORDER BY name"
+    res = query(cypher)
+    return [r["name"] for r in res]
+
+def get_user_preferred_flowers(username):
+    """ดึงรายการดอกไม้ที่ผู้ใช้คนนี้เคยเลือก/ชอบไว้ พร้อมคะแนน"""
+    cypher = """
+    MATCH (u:User {name: $username})-[r:PREFERS]->(f:Flower)
+    RETURN 
+        f.name AS flower,
+        f.meaning AS meaning,
+        f.image_url AS image_url,
+        r.rating AS rating
+    ORDER BY rating DESC, flower
+    """
+    res = query(cypher, {"username": username})
+    return pd.DataFrame(res)
+
+def get_similar_users(target_user):
+    """หาผู้ใช้คนอื่นที่มีรสนิยมใกล้เคียงกัน (ชอบดอกไม้เดียวกันอย่างน้อย 1 ชนิด)"""
+    cypher = """
+    MATCH (me:User {name: $target_user})-[r1:PREFERS]->(f:Flower)<-[r2:PREFERS]-(other:User)
+    WHERE other <> me
+    RETURN 
+        other.name AS similar_user,
+        f.name AS flower,
+        f.meaning AS meaning,
+        f.image_url AS image_url,
+        r2.rating AS other_rating
+    ORDER BY similar_user, flower
+    """
+    res = query(cypher, {"target_user": target_user})
+    return pd.DataFrame(res)
+
 def get_random_recommended_flower():
     """สุ่มดอกไม้ 1 ชนิดพร้อมความหมายและรูปภาพ"""
     cypher = """
@@ -65,7 +101,6 @@ def get_or_create_user(username):
 
 def recommend_flowers_for_user(target_user):
     """คำนวณดอกไม้แนะนำอ้างอิงตามรสนิยม หรือสุ่มให้หากเป็นผู้ใช้ใหม่"""
-    # 1. ตรวจสอบก่อนว่า User นี้เคยมีคะแนนความชอบดอกไม้ไหม
     check_cypher = "MATCH (u:User {name: $target_user})-[:PREFERS]->(f:Flower) RETURN count(f) AS count"
     user_pref_count = query(check_cypher, {"target_user": target_user})[0]["count"]
 
@@ -132,7 +167,7 @@ def delete_flower(name):
     query(cypher, {"name": name}, write=True)
 
 def seed_demo_data():
-    """สร้าง Constraint และลงข้อมูลเริ่มต้นจากไฟล์ FlowerRecommenderSystem_Neo4j.ipynb"""
+    """สร้าง Constraint และลงข้อมูลเริ่มต้นจากไฟล์ FlowerRecommenderSystem_Neo4j.ipynb พร้อมผูกรูปจาก GitHub"""
     query("CREATE CONSTRAINT user_name_unique IF NOT EXISTS FOR (u:User) REQUIRE u.name IS UNIQUE", write=True)
     query("CREATE CONSTRAINT flower_name_unique IF NOT EXISTS FOR (f:Flower) REQUIRE f.name IS UNIQUE", write=True)
     
@@ -216,14 +251,93 @@ menu = st.sidebar.radio("เลือกหน้าต่าง:", ["หน้�
 # ------------------------------------------
 if menu == "หน้าผู้ใช้ทั่วไป (User)":
     st.title("🌸 ระบบแนะนำดอกไม้ตามความหมาย")
-    
-    # ช่องกรอกชื่อผู้ใช้งาน
-    user_name_input = st.text_input("👤 กรอกชื่อของคุณเพื่อเริ่มใช้งาน:", placeholder="เช่น Song, Praew, Kaew...")
 
-    tab1, tab2 = st.tabs(["🎲 สุ่มดอกไม้ทายใจ", "🎯 ดอกไม้แนะนำประจำตัวคุณ"])
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📖 ดูประวัติดอกไม้ที่ชอบ", 
+        "👥 ค้นหาผู้ใช้ที่รสนิยมใกล้เคียง",
+        "🎯 ค้นหาดอกไม้แนะนำประจำตัวคุณ", 
+        "🎲 สุ่มดอกไม้ทายใจประจำวัน"
+    ])
 
-    # --- TAB 1: สุ่มดอกไม้ ---
+    # --- TAB 1: ดูประวัติดอกไม้ที่ชอบ ---
     with tab1:
+        st.subheader("เลือกชื่อผู้ใช้งานที่มีในฐานข้อมูลเพื่อดูดอกไม้ที่ชอบ")
+        all_users = get_all_users()
+        if all_users:
+            selected_existing_user = st.selectbox("เลือกชื่อผู้ใช้:", all_users, key="tab1_user")
+            if selected_existing_user:
+                df_user_fav = get_user_preferred_flowers(selected_existing_user)
+                if not df_user_fav.empty:
+                    st.write(f"🌺 รายการดอกไม้ที่ **{selected_existing_user}** ชอบ/เคยเลือกไว้:")
+                    cols = st.columns(3)
+                    for idx, row in df_user_fav.iterrows():
+                        with cols[idx % 3]:
+                            with st.container(border=True):
+                                if row.get("image_url"):
+                                    st.image(row["image_url"], use_container_width=True)
+                                st.subheader(f"{row['flower']}")
+                                st.write(f"**ความหมาย:** {row['meaning']}")
+                                st.caption(f"⭐ คะแนนความชอบ: {row['rating']}/5")
+                else:
+                    st.info(f"{selected_existing_user} ยังไม่มีรายการดอกไม้ที่เลือกไว้")
+        else:
+            st.warning("ยังไม่มีข้อมูลผู้ใช้ในระบบ กรุณาติดต่อ Admin เพื่อลงข้อมูล Demo")
+
+    # --- TAB 2: ดูผู้ใช้ที่มีรสนิยมใกล้เคียง ---
+    with tab2:
+        st.subheader("ค้นหาผู้ใช้คนอื่นที่มีรสนิยมใกล้เคียงกัน")
+        all_users_tab2 = get_all_users()
+        if all_users_tab2:
+            target_sim_user = st.selectbox("เลือกชื่อของคุณ/ชื่อผู้ใช้ที่ต้องการเปรียบเทียบ:", all_users_tab2, key="tab2_user")
+            if target_sim_user:
+                df_sim = get_similar_users(target_sim_user)
+                if not df_sim.empty:
+                    st.success(f"ผู้ใช้ที่มีรสนิยมใกล้เคียงกับ **{target_sim_user}** (ชอบดอกไม้ชนิดเดียวกัน):")
+                    
+                    # แสดงแบบตารางสวยงาม
+                    cols = st.columns(3)
+                    for idx, row in df_sim.iterrows():
+                        with cols[idx % 3]:
+                            with st.container(border=True):
+                                if row.get("image_url"):
+                                    st.image(row["image_url"], use_container_width=True)
+                                st.subheader(f"🤝 {row['similar_user']}")
+                                st.write(f"🌸 ชอบเหมือนกัน: **{row['flower']}**")
+                                st.write(f"*{row['meaning']}*")
+                                st.caption(f"คะแนนที่ {row['similar_user']} ให้ไว้: {row['other_rating']}/5")
+                else:
+                    st.info(f"ยังไม่พบผู้ใช้คนอื่นที่มีรสนิยมใกล้เคียงกับ {target_sim_user}")
+        else:
+            st.warning("ยังไม่มีข้อมูลผู้ใช้ในระบบ")
+
+    # --- TAB 3: ดอกไม้แนะนำรายบุคคล ---
+    with tab3:
+        st.subheader("คำนวณดอกไม้ที่แนะนำสำหรับคุณ")
+        user_name_input = st.text_input("👤 กรอกชื่อของคุณ (หรือชื่อผู้ใช้ที่ต้องการค้นหา):", placeholder="เช่น Song, Praew, Kaew...")
+        
+        if user_name_input.strip() != "":
+            if st.button("🔍 คำนวณดอกไม้แนะนำ"):
+                # บันทึกผู้ใช้ใหม่ลง Neo4j
+                get_or_create_user(user_name_input.strip())
+                
+                df_rec = recommend_flowers_for_user(user_name_input.strip())
+                if not df_rec.empty:
+                    st.success(f"รายการดอกไม้แนะนำสำหรับ **{user_name_input.strip()}**:")
+                    cols = st.columns(3)
+                    for idx, row in df_rec.iterrows():
+                        with cols[idx % 3]:
+                            with st.container(border=True):
+                                if row.get("image_url"):
+                                    st.image(row["image_url"], use_container_width=True)
+                                st.subheader(f"{row['flower']}")
+                                st.write(f"**ความหมาย:** {row['meaning']}")
+                else:
+                    st.info("ไม่มีดอกไม้แนะนำเพิ่มเติมในขณะนี้")
+        else:
+            st.info("👆 กรุณากรอกชื่อของคุณในช่องด้านบนก่อนกดคำนวณ")
+
+    # --- TAB 4: สุ่มดอกไม้ ---
+    with tab4:
         st.subheader("กดปุ่มเพื่อสุ่มดอกไม้แนะนำพร้อมความหมาย")
         if st.button("✨ กดเพื่อสุ่มดอกไม้!", type="primary"):
             flower = get_random_recommended_flower()
@@ -241,32 +355,8 @@ if menu == "หน้าผู้ใช้ทั่วไป (User)":
             else:
                 st.warning("ยังไม่มีข้อมูลดอกไม้ในระบบ")
 
-    # --- TAB 2: ดอกไม้แนะนำรายบุคคล ---
-    with tab2:
-        st.subheader("ค้นหาดอกไม้ที่เหมาะกับคุณ")
-        if user_name_input.strip() != "":
-            if st.button("🔍 สุ่ม/คำนวณ ดอกไม้ที่น่าจะชอบ"):
-                # บันทึกผู้ใช้ใหม่ลง Neo4j
-                get_or_create_user(user_name_input.strip())
-                
-                df_rec = recommend_flowers_for_user(user_name_input.strip())
-                if not df_rec.empty:
-                    st.success(f"รายการดอกไม้แนะนำสำหรับคุณ **{user_name_input.strip()}**:")
-                    cols = st.columns(3)
-                    for idx, row in df_rec.iterrows():
-                        with cols[idx % 3]:
-                            with st.container(border=True):
-                                if row.get("image_url"):
-                                    st.image(row["image_url"], use_container_width=True)
-                                st.subheader(f"{row['flower']}")
-                                st.write(f"**ความหมาย:** {row['meaning']}")
-                else:
-                    st.info("ไม่มีดอกไม้แนะนำเพิ่มเติมในขณะนี้")
-        else:
-            st.info("👆 กรุณากรอกชื่อของคุณในช่องด้านบนก่อนใช้งานฟังก์ชันนี้")
-
 # ------------------------------------------
-# 2. ระบบผู้ดูแลระบบ (ADMIN SIDE - มีระบบล็อกอิน)
+# 2. ระบบผู้ดูแลระบบ (ADMIN SIDE)
 # ------------------------------------------
 elif menu == "เข้าสู่ระบบ Admin":
     st.title("🔒 เข้าสู่ระบบผู้ดูแลระบบ (Admin Access)")
@@ -281,7 +371,6 @@ elif menu == "เข้าสู่ระบบ Admin":
             btn_login = st.form_submit_button("เข้าสู่ระบบ")
 
             if btn_login:
-                # ตั้งรหัสผ่าน Admin ตรงนี้ (ค่าเริ่มต้นคือ admin1234)
                 if admin_password == "admin1234":
                     st.session_state["admin_logged_in"] = True
                     st.success("เข้าสู่ระบบสำเร็จ!")
@@ -289,7 +378,6 @@ elif menu == "เข้าสู่ระบบ Admin":
                 else:
                     st.error("รหัสผ่านไม่ถูกต้อง!")
     else:
-        # เมื่อล็อกอินผ่านแล้ว
         col_title, col_logout = st.columns([4, 1])
         with col_title:
             st.subheader("⚙️ เมนูจัดการข้อมูลหลังบ้าน")

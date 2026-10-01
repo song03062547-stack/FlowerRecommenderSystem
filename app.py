@@ -140,18 +140,18 @@ def seed_demo_data():
     query("UNWIND $users AS name MERGE (u:User {name: name})", {"users": users}, write=True)
     
     flowers = [
-        {"name": "Jasmine", "meaning": "ความรักอันบริสุทธิ์ ความกตัญญู", "image_url": "https://images.unsplash.com/photo-1592729645009-b96d1e63d14b?w=400"},
-        {"name": "Pink Rose", "meaning": "ความรักอันอ่อนโยน ความขอบคุณ", "image_url": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400"},
-        {"name": "Lotus", "meaning": "ความบริสุทธิ์ การหลุดพ้นจากกิเลส", "image_url": "https://images.unsplash.com/photo-1508610048659-a06b669e3321?w=400"},
-        {"name": "Sunflower", "meaning": "ความหวัง พลังบวก", "image_url": "https://images.unsplash.com/photo-1597848212624-a19eb35e2651?w=400"},
-        {"name": "White Lily", "meaning": "ความบริสุทธิ์ เกียรติยศ", "image_url": "https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=400"},
-        {"name": "Purple Orchid", "meaning": "ความสง่างาม เสน่ห์", "image_url": "https://images.unsplash.com/photo-1525310072745-f49212b5ac6d?w=400"},
-        {"name": "Chrysanthemum", "meaning": "ความสัตย์ซื่อ อายุยืนยาว", "image_url": "https://images.unsplash.com/photo-1563241527-3004b7be0ffd?w=400"},
-        {"name": "Red Carnation", "meaning": "ความรักของแม่", "image_url": "https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=400"},
-        {"name": "Blue Iris", "meaning": "ปัญญา ความหวัง ศรัทธา", "image_url": "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=400"},
-        {"name": "Red Tulip", "meaning": "ความรักที่สมบูรณ์แบบ", "image_url": "https://images.unsplash.com/photo-1520763185298-1b434c919102?w=400"},
-        {"name": "Daisy", "meaning": "ความรักบริสุทธิ์ ความสดใสไร้เดียงสา", "image_url": "https://images.unsplash.com/photo-1606041008023-472dfb5e530f?w=400"},
-        {"name": "Hydrangea", "meaning": "ความเข้าใจ การขอบคุณจากหัวใจ", "image_url": "https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=400"}
+        {"name": "Jasmine",       "meaning": "ความรักอันบริสุทธิ์ ความกตัญญู", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/jasmine.jpg"},
+        {"name": "Pink Rose",     "meaning": "ความรักอันอ่อนโยน ความขอบคุณ", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/Pink%20Rose.jpg"},
+        {"name": "Lotus",         "meaning": "ความบริสุทธิ์ การหลุดพ้นจากกิเลส", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/Lotus.jpg"},
+        {"name": "Sunflower",     "meaning": "ความหวัง พลังบวก", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/Sunflower.jpg"},
+        {"name": "White Lily",    "meaning": "ความบริสุทธิ์ เกียรติยศ", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/White%20Lily.jpg"},
+        {"name": "Purple Orchid", "meaning": "ความสง่างาม เสน่ห์", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/Purple%20Orchid.jpg"},
+        {"name": "Chrysanthemum", "meaning": "ความสัตย์ซื่อ อายุยืนยาว", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/Chrysanthemum.jpg"},
+        {"name": "Red Carnation", "meaning": "ความรักของแม่", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/Red%20Carnation.jpg"},
+        {"name": "Blue Iris",     "meaning": "ปัญญา ความหวัง ศรัทธา", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/Blue%20Iris.jpg"},
+        {"name": "Red Tulip",     "meaning": "ความรักที่สมบูรณ์แบบ", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/Red%20Tulip.jpg"},
+        {"name": "Daisy",         "meaning": "ความรักบริสุทธิ์ ความสดใสไร้เดียงสา", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/Daisy.jpg"},
+        {"name": "Hydrangea",     "meaning": "ความเข้าใจ การขอบคุณจากหัวใจ", "image_url": "https://raw.githubusercontent.com/song03062547-stack/FlowerRecommenderSystem/main/images/Hydrangea.jpg"}
     ]
     query("""
     UNWIND $flowers AS row

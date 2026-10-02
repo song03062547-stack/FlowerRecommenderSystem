@@ -91,6 +91,68 @@ def get_similar_users(target_user):
     return pd.DataFrame(res)
 
 
+def get_all_relationships():
+    """ดึงความสัมพันธ์ PREFERS ทั้งหมดในระบบ (ทุก User กับทุก Flower) สำหรับวาดกราฟภาพรวม"""
+    cypher = """
+    MATCH (u:User)-[r:PREFERS]->(f:Flower)
+    RETURN u.name AS user, f.name AS flower, r.rating AS rating
+    ORDER BY u.name, f.name
+    """
+    return query(cypher)
+
+
+def _dot_escape(text):
+    """กันไม่ให้เครื่องหมายคำพูดในชื่อไปทำให้ DOT syntax พัง"""
+    return str(text).replace('"', "'")
+
+
+def build_relationship_graph(user_rows, similar_rows=None, center_user=None):
+    """สร้างข้อความ DOT สำหรับวาดกราฟความสัมพันธ์ User <-> Flower ด้วย st.graphviz_chart
+    user_rows: list ของ {flower, rating} ของ center_user (หรือ {user, flower, rating} สำหรับภาพรวมทั้งระบบ)
+    similar_rows: list ของ {similar_user, flower, other_rating} (ใส่เฉพาะกรณีกราฟรายบุคคล)
+    """
+    dot = ["digraph G {", 'rankdir="LR";', 'node [fontname="Arial", fontsize=12];', "bgcolor=transparent;"]
+    seen_users = set()
+    seen_flowers = set()
+
+    def add_user_node(name, is_center=False):
+        if name in seen_users:
+            return
+        seen_users.add(name)
+        fill = "#F472B6" if is_center else "#FDE68A"
+        dot.append(f'"U_{_dot_escape(name)}" [label="👤 {_dot_escape(name)}", shape=box, '
+                   f'style="rounded,filled", fillcolor="{fill}"];')
+
+    def add_flower_node(name):
+        if name in seen_flowers:
+            return
+        seen_flowers.add(name)
+        dot.append(f'"F_{_dot_escape(name)}" [label="🌸 {_dot_escape(name)}", shape=box, '
+                   f'style="rounded,filled", fillcolor="#C4B5FD"];')
+
+    if center_user:
+        add_user_node(center_user, is_center=True)
+        for row in user_rows:
+            add_flower_node(row["flower"])
+            dot.append(f'"U_{_dot_escape(center_user)}" -> "F_{_dot_escape(row["flower"])}" '
+                       f'[label="★{row["rating"]}", color="#DB2777", fontcolor="#DB2777"];')
+        for row in (similar_rows or []):
+            add_user_node(row["similar_user"])
+            add_flower_node(row["flower"])
+            dot.append(f'"U_{_dot_escape(row["similar_user"])}" -> "F_{_dot_escape(row["flower"])}" '
+                       f'[label="★{row["other_rating"]}", color="#7C3AED", fontcolor="#7C3AED"];')
+    else:
+        # กราฟภาพรวมทั้งระบบ: user_rows คือ {user, flower, rating}
+        for row in user_rows:
+            add_user_node(row["user"])
+            add_flower_node(row["flower"])
+            dot.append(f'"U_{_dot_escape(row["user"])}" -> "F_{_dot_escape(row["flower"])}" '
+                       f'[label="★{row["rating"]}", color="#9333EA", fontcolor="#9333EA"];')
+
+    dot.append("}")
+    return "\n".join(dot)
+
+
 def get_random_recommended_flower():
     """สุ่มดอกไม้ 1 ชนิดพร้อมความหมายและรูปภาพ"""
     cypher = """
@@ -337,11 +399,12 @@ if menu == "หน้าผู้ใช้ทั่วไป (User)":
         get_or_create_user(current_user)
         st.success(f"กำลังใช้งานในชื่อ: **{current_user}**")
 
-        tab1, tab2, tab3, tab4 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "⭐ บันทึกดอกไม้ที่คุณชอบ",
             "📖 ประวัติดอกไม้ที่คุณเลือกไว้",
             "👥 ผู้ใช้ที่มีรสนิยมใกล้เคียง",
             "🎯 ดอกไม้แนะนำสำหรับคุณ",
+            "🕸️ แผนผังความสัมพันธ์",
         ])
 
         # --- TAB 1: บันทึกดอกไม้ที่ชอบ ---
@@ -412,6 +475,30 @@ if menu == "หน้าผู้ใช้ทั่วไป (User)":
                             st.write(f"**ความหมาย:** {row['meaning']}")
             else:
                 st.info("ไม่มีดอกไม้แนะนำเพิ่มเติมในขณะนี้")
+
+        # --- TAB 5: แผนผังความสัมพันธ์ ---
+        with tab5:
+            st.subheader(f"ใครเชื่อมกับใคร? แผนผังความสัมพันธ์ของ {current_user}")
+            st.caption("🟣 ชมพูเข้ม = ตัวคุณ · 🟡 เหลือง = ผู้ใช้คนอื่น · 🟣 ม่วง = ดอกไม้ · เส้นคือ 'ชอบ' พร้อมคะแนน")
+            df_mine = get_user_preferred_flowers(current_user)
+            df_similar = get_similar_users(current_user)
+
+            if df_mine.empty:
+                st.info("คุณยังไม่มีความสัมพันธ์ในระบบ ลองไปแท็บ '⭐ บันทึกดอกไม้ที่คุณชอบ' ก่อนครับ")
+            else:
+                dot_graph = build_relationship_graph(
+                    user_rows=df_mine.to_dict("records"),
+                    similar_rows=df_similar.to_dict("records") if not df_similar.empty else [],
+                    center_user=current_user,
+                )
+                st.graphviz_chart(dot_graph, use_container_width=True)
+                with st.expander("ดูข้อมูลดิบที่ใช้วาดกราฟ"):
+                    st.write("ดอกไม้ที่คุณชอบ:")
+                    st.dataframe(df_mine[["flower", "rating"]], use_container_width=True, hide_index=True)
+                    if not df_similar.empty:
+                        st.write("ผู้ใช้คนอื่นที่เชื่อมกับดอกไม้เดียวกัน:")
+                        st.dataframe(df_similar[["similar_user", "flower", "other_rating"]],
+                                   use_container_width=True, hide_index=True)
     else:
         st.info("👆 โปรดเลือกรายชื่อจากดร็อปดาวน์ หรือพิมพ์ชื่อของคุณในช่องด้านบนก่อนเริ่มใช้งาน")
 
@@ -465,7 +552,14 @@ elif menu == "เข้าสู่ระบบ Admin":
 
         admin_action = st.sidebar.selectbox(
             "การจัดการหลังบ้าน:",
-            ["รายการดอกไม้ทั้งหมด", "เพิ่มดอกไม้ใหม่", "แก้ไข/ลบ ดอกไม้", "จัดการผู้ใช้ (Users)", "Setup ข้อมูลเริ่มต้น (Demo Data)"],
+            [
+                "รายการดอกไม้ทั้งหมด",
+                "เพิ่มดอกไม้ใหม่",
+                "แก้ไข/ลบ ดอกไม้",
+                "จัดการผู้ใช้ (Users)",
+                "🕸️ ภาพรวมความสัมพันธ์ทั้งหมด",
+                "Setup ข้อมูลเริ่มต้น (Demo Data)",
+            ],
         )
 
         # --- 1. ดูรายการทั้งหมด ---
@@ -590,7 +684,21 @@ elif menu == "เข้าสู่ระบบ Admin":
                 else:
                     st.caption("ยังไม่มีผู้ใช้ให้ลบ")
 
-        # --- 5. Setup ข้อมูลเริ่มต้น ---
+        # --- 5. ภาพรวมความสัมพันธ์ทั้งหมด ---
+        elif admin_action == "🕸️ ภาพรวมความสัมพันธ์ทั้งหมด":
+            st.subheader("🕸️ ใครเชื่อมกับใคร? ภาพรวมทั้งระบบ")
+            st.caption("🟡 เหลือง = ผู้ใช้ · 🟣 ม่วง = ดอกไม้ · เส้นคือความสัมพันธ์ PREFERS พร้อมคะแนน")
+            all_rels = get_all_relationships()
+            if all_rels:
+                dot_graph_all = build_relationship_graph(user_rows=all_rels, center_user=None)
+                st.graphviz_chart(dot_graph_all, use_container_width=True)
+                st.caption(f"รวมทั้งหมด {len(all_rels)} ความสัมพันธ์")
+                with st.expander("ดูข้อมูลดิบ"):
+                    st.dataframe(pd.DataFrame(all_rels), use_container_width=True, hide_index=True)
+            else:
+                st.info("ยังไม่มีความสัมพันธ์ในระบบ กด Setup ข้อมูลเริ่มต้นก่อนครับ")
+
+        # --- 6. Setup ข้อมูลเริ่มต้น ---
         elif admin_action == "Setup ข้อมูลเริ่มต้น (Demo Data)":
             st.subheader("🚀 ตั้งค่าและโหลดข้อมูลเริ่มต้น")
             st.write("กดปุ่มด้านล่างเพื่อสร้าง Constraints และโหลดชุดข้อมูล Demo (10 Users / 13 Flowers) เข้า Neo4j")
